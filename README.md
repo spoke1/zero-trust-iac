@@ -4,9 +4,9 @@
 
 Infrastructure as Code for **Zero Trust landing zones** in Azure using **Bicep**.  
 Creates a Security/Logging foundation:
-- 🧱 Resource Group
-- 📊 Log Analytics Workspace
-- 🛡️ Microsoft Defender for Cloud (plans)
+- Resource Group
+- Log Analytics Workspace
+- Microsoft Defender for Cloud (plans)
 
 ---
 
