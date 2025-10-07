@@ -1,0 +1,64 @@
+name: CI/CD
+
+on:
+  pull_request:
+    paths:
+      - "bicep/**"
+      - ".github/workflows/deploy.yml"
+  push:
+    branches: [ "main" ]
+    paths:
+      - "bicep/**"
+      - ".github/workflows/deploy.yml"
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AZ_REGION: westeurope
+  TEMPLATE: bicep/main.bicep
+  PARAMS: bicep/main.dev.bicepparam
+
+jobs:
+  validate-and-whatif:
+    name: Validate & What-If
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Ensure Bicep
+        run: az bicep version || az bicep install
+      - name: What-If
+        run: |
+          az deployment sub what-if \
+            --location "$AZ_REGION" \
+            --template-file "$TEMPLATE" \
+            --parameters "$PARAMS"
+
+  deploy:
+    name: Deploy (main)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs: validate-and-whatif
+    steps:
+      - uses: actions/checkout@v4
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Ensure Bicep
+        run: az bicep version || az bicep install
+      - name: Deploy to Subscription
+        run: |
+          az deployment sub create \
+            --location "$AZ_REGION" \
+            --template-file "$TEMPLATE" \
+            --parameters "$PARAMS"
