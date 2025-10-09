@@ -8,8 +8,13 @@ Creates a Security/Logging foundation:
 - Log Analytics Workspace
 - Microsoft Defender for Cloud (plans)
 
----
+## October 2025 Updates 🚀
+- Added PROD parameter file and policy scaffolding
+- CI/CD workflow extended for manual prod deploy
+- Coming next: Diagnostics module for LAW integration
 
+---
+  
 ## Quickstart
 
 ### Prereqs
