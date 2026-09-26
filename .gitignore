@@ -1,0 +1,17 @@
+# Compiled templates
+*.json
+!bicepconfig.json
+
+# Local parameter overrides (may contain tenant-specific values)
+*.local.bicepparam
+
+# Credentials (never commit)
+*.pfx
+*.pem
+*.key
+.env
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store

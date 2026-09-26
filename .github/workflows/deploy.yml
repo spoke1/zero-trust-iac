@@ -1,64 +1,87 @@
-name: CI/CD
+name: Deploy
+
+# Manual only. Every run shows a what-if first; "deploy" applies it afterwards.
+# Authentication uses OpenID Connect (federated credentials), so no client secret exists.
+# Configure the GitHub environments "dev" and "prod" as described in docs/deployment.md.
 
 on:
-  pull_request:
-    paths:
-      - "bicep/**"
-      - ".github/workflows/deploy.yml"
-  push:
-    branches: [ "main" ]
-    paths:
-      - "bicep/**"
-      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: choice
+        options: [dev, prod]
+        default: dev
+      mode:
+        description: Show the what-if only, or deploy after the what-if
+        type: choice
+        options: [what-if, deploy]
+        default: what-if
+      location:
+        description: Deployment location (also the default region of the resources)
+        type: string
+        default: westeurope
 
 permissions:
   id-token: write
   contents: read
 
-env:
-  AZ_REGION: westeurope
-  TEMPLATE: bicep/main.bicep
-  PARAMS: bicep/main.dev.bicepparam
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
 
 jobs:
-  validate-and-whatif:
-    name: Validate & What-If
+  deploy:
+    name: ${{ inputs.mode }} (${{ inputs.environment }})
     runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    env:
+      TEMPLATE: bicep/main.bicep
+      PARAMS: bicep/main.${{ inputs.environment }}.bicepparam
+      DEPLOYMENT_NAME: zero-trust-foundation-${{ inputs.environment }}
+      LOCATION: ${{ inputs.location }}
     steps:
-      - uses: actions/checkout@v4
-      - name: Azure Login (OIDC)
-        uses: azure/login@v2
+      - uses: actions/checkout@v7
+
+      - name: Check environment configuration
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          missing=0
+          for name in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Secret $name is not set for environment '${{ inputs.environment }}'. See docs/deployment.md."
+              missing=1
+            fi
+          done
+          exit $missing
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v3
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      - name: Ensure Bicep
-        run: az bicep version || az bicep install
-      - name: What-If
+
+      - name: Install Bicep CLI
+        run: az bicep install
+
+      - name: What-if
         run: |
           az deployment sub what-if \
-            --location "$AZ_REGION" \
+            --name "$DEPLOYMENT_NAME" \
+            --location "$LOCATION" \
             --template-file "$TEMPLATE" \
             --parameters "$PARAMS"
 
-  deploy:
-    name: Deploy (main)
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    needs: validate-and-whatif
-    steps:
-      - uses: actions/checkout@v4
-      - name: Azure Login (OIDC)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      - name: Ensure Bicep
-        run: az bicep version || az bicep install
-      - name: Deploy to Subscription
+      - name: Deploy
+        if: inputs.mode == 'deploy'
         run: |
           az deployment sub create \
-            --location "$AZ_REGION" \
+            --name "$DEPLOYMENT_NAME" \
+            --location "$LOCATION" \
             --template-file "$TEMPLATE" \
-            --parameters "$PARAMS"
+            --parameters "$PARAMS" \
+            --output table
